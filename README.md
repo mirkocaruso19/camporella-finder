@@ -5,7 +5,6 @@
 
 A Google Maps-style web app that analyzes satellite/OSM data around your location and suggests the **best spots for a camporella** — scoring each candidate on privacy, accessibility, terrain type, and distance from buildings.
 
-🚀 **[Live demo](https://mirkocaruso19.pythonanywhere.com/)** — may be subject to Overpass API rate limiting and timeouts.
 
 ---
 
