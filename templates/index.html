@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Camporella Finder 🌿</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f0f0f; color: #f0f0f0; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Top bar ─────────────────────────────────────── */
+    #topbar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px;
+      background: rgba(15,15,15,0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid #2a2a2a;
+      z-index: 1000; flex-shrink: 0;
+    }
+    #topbar h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
+    #topbar h1 span { color: #4ade80; }
+
+    .tb-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer;
+      font-size: .85rem; font-weight: 600; transition: all .15s;
+    }
+    #btn-locate  { background: #1d4ed8; color: #fff; }
+    #btn-locate:hover  { background: #2563eb; }
+    #btn-analyze { background: #15803d; color: #fff; }
+    #btn-analyze:hover { background: #16a34a; }
+    #btn-analyze:disabled { background: #374151; color: #9ca3af; cursor: not-allowed; }
+
+    .layer-toggle {
+      margin-left: auto; display: flex; background: #1e1e1e;
+      border: 1px solid #333; border-radius: 8px; overflow: hidden;
+    }
+    .layer-toggle button {
+      padding: 7px 12px; border: none; cursor: pointer; font-size: .78rem;
+      font-weight: 600; background: transparent; color: #9ca3af; transition: all .15s;
+    }
+    .layer-toggle button.active { background: #374151; color: #f0f0f0; }
+
+    /* ── Map wrapper ─────────────────────────────────── */
+    #map-wrap { position: relative; flex: 1; min-height: 0; }
+    #map      { width: 100%; height: 100%; }
+
+    /* ── Radius slider ───────────────────────────────── */
+    #radius-ctrl {
+      position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: rgba(15,15,15,.88); backdrop-filter: blur(6px);
+      border: 1px solid #333; border-radius: 10px;
+      padding: 8px 16px; display: flex; align-items: center; gap: 10px;
+      z-index: 500; font-size: .8rem;
+    }
+    #radius-ctrl input[type=range] { width: 120px; accent-color: #4ade80; }
+    #radius-val { min-width: 52px; color: #4ade80; font-weight: 700; }
+
+    /* ── Overlay / spinner ───────────────────────────── */
+    #overlay {
+      display: none; position: absolute; inset: 0; background: rgba(0,0,0,.55);
+      backdrop-filter: blur(2px); z-index: 800; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+    }
+    #overlay.show { display: flex; }
+    .spinner {
+      width: 48px; height: 48px; border: 4px solid #333;
+      border-top-color: #4ade80; border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #overlay p { font-size: .9rem; color: #d1fae5; }
+
+    /* ── Results panel ───────────────────────────────── */
+    #panel {
+      position: absolute; top: 0; right: 0; height: 100%;
+      width: 340px; background: rgba(13,13,13,.96);
+      backdrop-filter: blur(10px);
+      border-left: 1px solid #2a2a2a;
+      z-index: 600; overflow-y: auto;
+      transform: translateX(100%);
+      transition: transform .3s ease;
+      display: flex; flex-direction: column;
+    }
+    #panel.open { transform: translateX(0); }
+
+    #panel-header {
+      padding: 14px 16px 10px; border-bottom: 1px solid #222;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    #panel-header h2 { font-size: .95rem; font-weight: 700; }
+    #panel-close { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 1.3rem; line-height: 1; }
+    #panel-close:hover { color: #f0f0f0; }
+
+    #stats-bar {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      padding: 9px 14px; border-bottom: 1px solid #1e1e1e; flex-shrink: 0;
+    }
+    .stat-pill {
+      font-size: .72rem; padding: 3px 8px; border-radius: 99px;
+      background: #1e293b; color: #94a3b8;
+    }
+    .stat-pill b { color: #e2e8f0; }
+
+    #spots-list { padding: 10px; flex: 1; }
+
+    .spot-card {
+      background: #161616; border: 1px solid #252525; border-radius: 10px;
+      padding: 12px 14px; margin-bottom: 10px; cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .spot-card:hover, .spot-card.active { border-color: #4ade80; background: #0d1f14; }
+
+    .spot-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .rank-badge {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .75rem; font-weight: 800; flex-shrink: 0;
+    }
+    .spot-title { font-size: .88rem; font-weight: 600; }
+    .spot-dist  { font-size: .75rem; color: #6b7280; margin-top: 1px; }
+    .score-bar-wrap { height: 6px; background: #252525; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+    .score-bar { height: 100%; border-radius: 3px; transition: width .4s; }
+
+    .spot-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+    .meta-tag {
+      font-size: .7rem; padding: 2px 7px; border-radius: 6px;
+      background: #1f2937; color: #9ca3af;
+    }
+    .meta-tag.green  { background: #052e16; color: #4ade80; }
+    .meta-tag.yellow { background: #1c1917; color: #fbbf24; }
+    .meta-tag.red    { background: #2d0d0d; color: #f87171; }
+
+    .breakdown {
+      display: none; margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid #1f2937;
+    }
+    .breakdown.show { display: block; }
+    .breakdown-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: .75rem; margin-bottom: 5px; color: #9ca3af;
+    }
+    .breakdown-row span:last-child { color: #e2e8f0; font-weight: 600; }
+    .mini-bar-wrap { flex: 1; height: 4px; background: #1f2937; border-radius: 2px; margin: 0 8px; }
+    .mini-bar { height: 100%; background: #4ade80; border-radius: 2px; }
+
+    /* ── "Click a spot" hint ─────────────────────────── */
+    #hint {
+      position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+      background: rgba(15,15,15,.85); backdrop-filter: blur(6px);
+      border: 1px solid #333; border-radius: 8px; padding: 7px 14px;
+      font-size: .78rem; color: #9ca3af; z-index: 500; pointer-events: none;
+      transition: opacity .3s;
+    }
+    #hint.hidden { opacity: 0; }
+
+    /* ── Leaflet custom marker icons ─────────────────── */
+    .cf-marker {
+      border-radius: 50%; border: 3px solid #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,.6);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: .7rem; color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ──────────────────────────────────────── -->
+<div id="topbar">
+  <h1>🌿 <span>Camporella</span> Finder</h1>
+  <button class="tb-btn" id="btn-locate">📍 Posizione</button>
+  <button class="tb-btn" id="btn-analyze" disabled>🔍 Analizza</button>
+  <div class="layer-toggle">
+    <button id="lyr-sat" class="active">🛰 Satellite</button>
+    <button id="lyr-map">🗺 Mappa</button>
+  </div>
+</div>
+
+<!-- ── Map ──────────────────────────────────────────── -->
+<div id="map-wrap">
+  <div id="map"></div>
+
+  <!-- Radius slider -->
+  <div id="radius-ctrl">
+    <span>Raggio:</span>
+    <input type="range" id="radius-slider" min="500" max="3000" step="100" value="1400" />
+    <span id="radius-val">1400 m</span>
+  </div>
+
+  <!-- Loading overlay -->
+  <div id="overlay">
+    <div class="spinner"></div>
+    <p id="overlay-msg">Scarico dati OSM…</p>
+  </div>
+
+  <!-- Hint -->
+  <div id="hint">Clicca sulla mappa per posizionarti</div>
+
+  <!-- Results panel -->
+  <div id="panel">
+    <div id="panel-header">
+      <h2>🏆 Migliori Camporelle</h2>
+      <button id="panel-close">✕</button>
+    </div>
+    <div id="stats-bar"></div>
+    <div id="spots-list"></div>
+  </div>
+</div>
+
+<script>
+// ── Map setup ───────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([41.9, 12.5], 12);
+
+const tileSat = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { attribution: 'Tiles © Esri — Source: Esri, Maxar, GeoEye', maxZoom: 19 }
+).addTo(map);
+
+const tileOsmLabels = L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { attribution: '© OpenStreetMap contributors', maxZoom: 19, opacity: 0.45 }
+).addTo(map);
+
+const tileMap = L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { attribution: '© OpenStreetMap contributors', maxZoom: 19 }
+);
+
+let satMode = true;
+
+document.getElementById('lyr-sat').onclick = () => {
+  if (satMode) return;
+  satMode = true;
+  map.removeLayer(tileMap);
+  map.addLayer(tileSat);
+  map.addLayer(tileOsmLabels);
+  document.getElementById('lyr-sat').classList.add('active');
+  document.getElementById('lyr-map').classList.remove('active');
+};
+document.getElementById('lyr-map').onclick = () => {
+  if (!satMode) return;
+  satMode = false;
+  map.removeLayer(tileSat);
+  map.removeLayer(tileOsmLabels);
+  map.addLayer(tileMap);
+  document.getElementById('lyr-map').classList.add('active');
+  document.getElementById('lyr-sat').classList.remove('active');
+};
+
+// ── State ───────────────────────────────────────────
+let userMarker   = null;
+let radiusCircle = null;
+let spotMarkers  = [];
+let activeCard   = null;
+let userLat = null, userLng = null;
+let radius  = 1400;
+
+// ── Radius slider ───────────────────────────────────
+const slider   = document.getElementById('radius-slider');
+const radVal   = document.getElementById('radius-val');
+slider.oninput = () => {
+  radius = +slider.value;
+  radVal.textContent = `${radius} m`;
+  if (radiusCircle) radiusCircle.setRadius(radius);
+};
+
+// ── Place user marker ───────────────────────────────
+function placeUser(lat, lng) {
+  userLat = lat; userLng = lng;
+  const hint = document.getElementById('hint');
+  hint.classList.add('hidden');
+
+  if (userMarker) map.removeLayer(userMarker);
+  if (radiusCircle) map.removeLayer(radiusCircle);
+
+  userMarker = L.marker([lat, lng], {
+    icon: L.divIcon({
+      className: '',
+      html: `<div style="width:18px;height:18px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.6)"></div>`,
+      iconSize: [18, 18], iconAnchor: [9, 9]
+    }),
+    zIndexOffset: 1000
+  }).addTo(map).bindPopup('📍 Sei qui');
+
+  radiusCircle = L.circle([lat, lng], {
+    radius,
+    color: '#4ade80', weight: 1.5,
+    fillColor: '#4ade80', fillOpacity: .07,
+    dashArray: '6 4'
+  }).addTo(map);
+
+  document.getElementById('btn-analyze').disabled = false;
+}
+
+map.on('click', e => placeUser(e.latlng.lat, e.latlng.lng));
+
+// ── Geolocate button ────────────────────────────────
+document.getElementById('btn-locate').onclick = () => {
+  if (!navigator.geolocation) { alert('Geolocalizzazione non disponibile.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      map.setView([lat, lng], 14);
+      placeUser(lat, lng);
+    },
+    () => alert('Impossibile ottenere la posizione. Clicca sulla mappa.')
+  );
+};
+
+// ── Score → colour ──────────────────────────────────
+function scoreColor(s) {
+  if (s >= 65) return '#22c55e';
+  if (s >= 45) return '#eab308';
+  if (s >= 25) return '#f97316';
+  return '#ef4444';
+}
+
+function scoreLabel(s) {
+  if (s >= 65) return '🟢';
+  if (s >= 45) return '🟡';
+  if (s >= 25) return '🟠';
+  return '🔴';
+}
+
+function metaTagClass(d, threshGood, threshBad) {
+  if (d >= threshGood) return 'green';
+  if (d >= threshBad)  return 'yellow';
+  return 'red';
+}
+
+// ── Clear old spot markers ──────────────────────────
+function clearSpots() {
+  spotMarkers.forEach(m => map.removeLayer(m));
+  spotMarkers = [];
+  activeCard  = null;
+}
+
+// ── Render results ──────────────────────────────────
+function renderResults(data) {
+  clearSpots();
+
+  const panel = document.getElementById('panel');
+  const list  = document.getElementById('spots-list');
+  const stats = document.getElementById('stats-bar');
+
+  // Stats pill bar
+  const s = data.stats;
+  stats.innerHTML = `
+    <span class="stat-pill">🔍 <b>${s.candidates}</b> punti</span>
+    <span class="stat-pill">✅ <b>${s.valid}</b> idonei</span>
+    <span class="stat-pill">🛣 <b>${s.roads_main}</b> art. princ.</span>
+    <span class="stat-pill">🚗 <b>${s.roads_driveable}</b> strade acc.</span>
+    <span class="stat-pill">🏚 <b>${s.buildings}</b> edifici</span>
+  `;
+
+  list.innerHTML = '';
+  panel.classList.add('open');
+
+  data.spots.forEach((spot, idx) => {
+    const col  = scoreColor(spot.score);
+    const pct  = Math.round(spot.score);
+
+    // Marker
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="cf-marker" style="width:32px;height:32px;background:${col};border-color:${col}30;">${spot.rank}</div>`,
+      iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -18]
+    });
+    const marker = L.marker([spot.lat, spot.lng], { icon }).addTo(map);
+
+    const popup = L.popup({ maxWidth: 220, className: 'cf-popup' }).setContent(`
+      <b>#${spot.rank} — ${pct}/100</b><br/>
+      Terreno: <i>${spot.land_type}</i><br/>
+      Da te: ${spot.dist_from_you} m • Offroad: ${spot.offroad_walk_m} m<br/>
+      🛣 Str. principale: ${spot.main_road_dist} m
+    `);
+    marker.bindPopup(popup);
+    marker.on('click', () => activateCard(idx));
+    spotMarkers.push(marker);
+
+    // Card
+    const card = document.createElement('div');
+    card.className = 'spot-card';
+    card.dataset.idx = idx;
+    card.innerHTML = `
+      <div class="spot-card-top">
+        <div class="rank-badge" style="background:${col}">${spot.rank}</div>
+        <div>
+          <div class="spot-title">${scoreLabel(spot.score)} Spot #${spot.rank} &nbsp;·&nbsp; <b>${pct}</b>/100</div>
+          <div class="spot-dist">📏 ${spot.dist_from_you} m da te</div>
+        </div>
+      </div>
+      <div class="score-bar-wrap">
+        <div class="score-bar" style="width:${pct}%;background:${col}"></div>
+      </div>
+      <div class="spot-meta">
+        <span class="meta-tag ${metaTagClass(spot.main_road_dist, 300, 150)}">🛣 ${spot.main_road_dist} m da art. princ.</span>
+        <span class="meta-tag ${metaTagClass(spot.access_road_dist, 80, 40)}">🥾 ${spot.access_road_dist} m da sentiero</span>
+        <span class="meta-tag ${metaTagClass(spot.building_dist, 200, 80)}">🏚 ${spot.building_dist} m da edifici</span>
+        <span class="meta-tag ${spot.land_quality === 'good' ? 'green' : spot.land_quality === 'bad' ? 'red' : 'yellow'}">🌿 ${spot.land_type}</span>
+      </div>
+      <div class="breakdown" id="bd-${idx}">
+        ${renderBreakdown(spot.components)}
+      </div>
+    `;
+
+    card.addEventListener('click', () => {
+      const wasSame = (activeCard === idx);
+      activateCard(idx);
+      // toggle breakdown
+      const bd = document.getElementById(`bd-${idx}`);
+      if (wasSame) {
+        bd.classList.toggle('show');
+      } else {
+        document.querySelectorAll('.breakdown').forEach(b => b.classList.remove('show'));
+        bd.classList.add('show');
+      }
+    });
+
+    list.appendChild(card);
+  });
+}
+
+function renderBreakdown(c) {
+  const rows = [
+    ['🛣 Privacy strade trafficate', c.main_road_privacy, 25],
+    ['🚗 Accessibilità (auto)',       c.accessibility,     35],
+    ['🏚 Privacy edifici',            c.building_privacy,  20],
+    ['🌿 Copertura terreno',          c.terrain,           20],
+  ];
+  return rows.map(([label, val, max]) => `
+    <div class="breakdown-row">
+      <span>${label}</span>
+      <div class="mini-bar-wrap"><div class="mini-bar" style="width:${Math.round(val/max*100)}%"></div></div>
+      <span>${val}/${max}</span>
+    </div>
+  `).join('');
+}
+
+function activateCard(idx) {
+  activeCard = idx;
+  document.querySelectorAll('.spot-card').forEach((c, i) => {
+    c.classList.toggle('active', i === idx);
+  });
+  const spot = lastSpots[idx];
+  map.panTo([spot.lat, spot.lng]);
+  spotMarkers[idx].openPopup();
+  // scroll card into view
+  const card = document.querySelector(`.spot-card[data-idx="${idx}"]`);
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+document.getElementById('panel-close').onclick = () => {
+  document.getElementById('panel').classList.remove('open');
+};
+
+// ── Analyze ─────────────────────────────────────────
+let lastSpots = [];
+
+document.getElementById('btn-analyze').onclick = async () => {
+  if (!userLat) return;
+
+  const overlay = document.getElementById('overlay');
+  const msg     = document.getElementById('overlay-msg');
+  overlay.classList.add('show');
+  msg.textContent = 'Scarico dati OSM (Overpass API)…';
+
+  clearSpots();
+  document.getElementById('panel').classList.remove('open');
+
+  try {
+    msg.textContent = 'Analizzo il territorio…';
+    const res  = await fetch('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat: userLat, lng: userLng, radius })
+    });
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    lastSpots = data.spots;
+    renderResults(data);
+  } catch (e) {
+    alert('Errore: ' + e.message);
+  } finally {
+    overlay.classList.remove('show');
+  }
+};
+</script>
+</body>
+</html>

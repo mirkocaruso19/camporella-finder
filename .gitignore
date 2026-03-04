@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Flask / runtime
+instance/
+flask_session/
+*.log
+
+# Environment / secrets (if you ever add one)
+.env
+.env.*
+
+# Database (if you ever add one)
+*.sqlite
+*.db
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
