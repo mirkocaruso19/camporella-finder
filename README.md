@@ -9,7 +9,7 @@ A Google Maps-style web app that analyzes satellite/OSM data around your locatio
 
 ## Screenshot
 
-![map view with scored spots](https://placehold.co/900x500/0f0f0f/4ade80?text=Camporella+Finder)
+![Camporella Finder — map view with scored spots](camporella_finder.png)
 
 ---
 
@@ -67,8 +67,8 @@ Road types are split into three tiers:
 ## Quickstart
 
 ```bash
-git clone https://github.com/yourusername/camporellap
-cd camporellap
+git clone https://github.com/mirkocaruso19/camporella-finder
+cd camporella-finder
 
 python3 -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
@@ -87,7 +87,7 @@ Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in your browser.
 ## Project structure
 
 ```
-camporellap/
+camporella-finder/
 ├── app.py               # Flask backend + scoring algorithm
 └── templates/
     └── index.html       # Single-page frontend (Leaflet + vanilla JS)
