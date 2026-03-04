@@ -8,6 +8,18 @@ A Google Maps-style web app that analyzes satellite/OSM data around your locatio
 
 ---
 
+## Data sources
+
+| Source | Provider | Data | License |
+|---|---|---|---|
+| 🛰 **Satellite imagery** | [Esri / Maxar](https://www.esri.com/) | World Imagery basemap | Esri ToU |
+| 🗺 **Street & land-use data** | [OpenStreetMap](https://www.openstreetmap.org/) via [Overpass API](https://overpass-api.de/) | Roads, buildings, landuse, natural features | ODbL |
+| ⛰ **Elevation / terrain** | [NASA SRTM](https://www2.jpl.nasa.gov/srtm/) via [OpenTopoData](https://www.opentopodata.org/) | 30 m resolution Digital Elevation Model | Public domain |
+
+All data is fetched at runtime — nothing is stored locally.
+
+---
+
 ## Screenshot
 
 ![Camporella Finder — map view with scored spots](camporella_finder.png)
