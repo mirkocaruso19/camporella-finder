@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 import requests
 import math
 import json
+import time
 
 app = Flask(__name__)
 
@@ -239,10 +240,91 @@ def score_point(lat, lng, roads_main, roads_driveable, roads_walkable,
                            "building_privacy": 20, "terrain": 20},
     }
 
+# ---------------------------------------------------------------------------
+# Elevation / slope  (OpenTopoData — SRTM 30 m, free, no key)
+# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Candidate grid
-# ---------------------------------------------------------------------------
+TOPO_URL      = "https://api.opentopodata.org/v1/srtm30m"
+SLOPE_RADIUS  = 30    # metres — matches SRTM pixel size
+SLOPE_DISCARD = 35    # % — steeper than this = disqualified
+TOPO_BATCH    = 100   # max locations per Overpass request
+TOPO_CANDIDATES = 50  # run elevation check only on the top-N by OSM score
+
+
+def _ring_points(lat, lng, radius_m=SLOPE_RADIUS, n=8):
+    """Return center + n evenly-spaced points at radius_m metres around (lat, lng)."""
+    cos_lat = math.cos(math.radians(lat))
+    pts = [(lat, lng)]          # index 0 = centre
+    for i in range(n):
+        angle = 2 * math.pi * i / n
+        dlat = radius_m * math.cos(angle) / 111_320
+        dlng = radius_m * math.sin(angle) / (111_320 * cos_lat)
+        pts.append((lat + dlat, lng + dlng))
+    return pts
+
+
+def _fetch_elevations(points):
+    """
+    Fetch elevations for a list of (lat, lng) tuples from OpenTopoData.
+    Returns a list of float elevations in the same order, or None on failure.
+    """
+    locations = "|".join(f"{lat},{lng}" for lat, lng in points)
+    try:
+        r = requests.get(TOPO_URL, params={"locations": locations}, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        return [res["elevation"] for res in data["results"]]
+    except Exception:
+        return None
+
+
+def fetch_slopes_for_candidates(candidates_scored):
+    """
+    For each candidate dict (must have 'lat' and 'lng'), compute max slope %.
+    Updates each dict in-place with 'slope_pct' and 'elevation'.
+    Respects OpenTopoData's ~1 req/s free-tier rate limit.
+    If the API is unavailable, leaves slope_pct as None (graceful degradation).
+    """
+    # Build flat list of points: 9 per candidate
+    all_points = []
+    rings = []
+    for s in candidates_scored:
+        ring = _ring_points(s["lat"], s["lng"])
+        rings.append(ring)
+        all_points.extend(ring)
+
+    # Batch into chunks of TOPO_BATCH
+    all_elevs = []
+    for i in range(0, len(all_points), TOPO_BATCH):
+        batch = all_points[i : i + TOPO_BATCH]
+        result = _fetch_elevations(batch)
+        if result is None:
+            # API down — fill with None, mark all slope_pct as None
+            for s in candidates_scored:
+                s["slope_pct"] = None
+                s["elevation"] = None
+            return
+        all_elevs.extend(result)
+        if i + TOPO_BATCH < len(all_points):
+            time.sleep(1.1)   # respect free-tier rate limit
+
+    # Map elevations back to candidates
+    idx = 0
+    for s, ring in zip(candidates_scored, rings):
+        n = len(ring)
+        elevs = all_elevs[idx : idx + n]
+        idx += n
+        center_elev = elevs[0]
+        ring_elevs  = elevs[1:]
+        if center_elev is None or any(e is None for e in ring_elevs):
+            s["slope_pct"] = None
+            s["elevation"] = round(center_elev) if center_elev is not None else None
+            continue
+        max_slope = max(abs(e - center_elev) / SLOPE_RADIUS * 100 for e in ring_elevs)
+        s["slope_pct"] = round(max_slope, 1)
+        s["elevation"] = round(center_elev)
+
+
 
 def candidate_grid(center_lat, center_lng, radius=1400, step=55):
     cos_lat   = math.cos(math.radians(center_lat))
@@ -298,10 +380,20 @@ def analyze():
 
     scored.sort(key=lambda x: -x["score"])
 
-    # Geographic spread: keep a result only if ≥ 200 m from all already-kept
+    # ── Elevation / slope check on top-N candidates ──────────────────────────
+    top_candidates = scored[:TOPO_CANDIDATES]
+    fetch_slopes_for_candidates(top_candidates)
+    # Disqualify candidates that are too steep (cliff, ravine, hillside > 35%)
+    # If API was unavailable (slope_pct is None) we let them through with a warning.
+    slope_ok = [
+        s for s in top_candidates
+        if s.get("slope_pct") is None or s["slope_pct"] <= SLOPE_DISCARD
+    ]
+
+    # ── Geographic spread filter ─────────────────────────────────────────────
     MIN_SPREAD = 200
     top = []
-    for s in scored:
+    for s in slope_ok:
         if all(haversine(s["lat"], s["lng"], k["lat"], k["lng"]) >= MIN_SPREAD
                for k in top):
             top.append(s)

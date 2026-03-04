@@ -44,6 +44,7 @@ Road types are split into three tiers:
 - Water, residential, commercial, industrial, military land
 - **Open agricultural/exposed land** (farmland, meadow, grass, orchard, vineyard) — visible, often private
 - More than **200 m from a car-driveable road** — no tractor, no 20-minute hike
+- **Slope > 35%** — cliffs, ravines, steep hillsides (checked via [OpenTopoData SRTM 30m](https://www.opentopodata.org/))
 
 ---
 

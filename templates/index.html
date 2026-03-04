@@ -378,8 +378,9 @@ function renderResults(data) {
     const popup = L.popup({ maxWidth: 220, className: 'cf-popup' }).setContent(`
       <b>#${spot.rank} — ${pct}/100</b><br/>
       Terreno: <i>${spot.land_type}</i><br/>
-      Da te: ${spot.dist_from_you} m • Offroad: ${spot.offroad_walk_m} m<br/>
-      🛣 Str. principale: ${spot.main_road_dist} m
+      Da te: ${spot.dist_from_you} m • Parcheggio: ${spot.offroad_walk_m} m<br/>
+      🛣 Str. principale: ${spot.main_road_dist} m<br/>
+      ${spot.slope_pct !== null ? `⛰ Pendenza: ${spot.slope_pct}% @ ${spot.elevation} m slm` : '⛰ Pendenza: n/d'}
     `);
     marker.bindPopup(popup);
     marker.on('click', () => activateCard(idx));
@@ -402,9 +403,12 @@ function renderResults(data) {
       </div>
       <div class="spot-meta">
         <span class="meta-tag ${metaTagClass(spot.main_road_dist, 300, 150)}">🛣 ${spot.main_road_dist} m da art. princ.</span>
-        <span class="meta-tag ${metaTagClass(spot.access_road_dist, 80, 40)}">🥾 ${spot.access_road_dist} m da sentiero</span>
+        <span class="meta-tag ${metaTagClass(spot.access_road_dist, 80, 40)}">🚗 ${spot.access_road_dist} m parcheggio</span>
         <span class="meta-tag ${metaTagClass(spot.building_dist, 200, 80)}">🏚 ${spot.building_dist} m da edifici</span>
         <span class="meta-tag ${spot.land_quality === 'good' ? 'green' : spot.land_quality === 'bad' ? 'red' : 'yellow'}">🌿 ${spot.land_type}</span>
+        ${spot.slope_pct !== null
+          ? `<span class="meta-tag ${spot.slope_pct <= 15 ? 'green' : spot.slope_pct <= 30 ? 'yellow' : 'red'}">⛰ ${spot.slope_pct}% · ${spot.elevation}m</span>`
+          : '<span class="meta-tag">⛰ pendenza n/d</span>'}
       </div>
       <div class="breakdown" id="bd-${idx}">
         ${renderBreakdown(spot.components)}
@@ -476,7 +480,7 @@ document.getElementById('btn-analyze').onclick = async () => {
   document.getElementById('panel').classList.remove('open');
 
   try {
-    msg.textContent = 'Analizzo il territorio…';
+    msg.textContent = 'Analizzo il territorio e verifico pendenze…';
     const res  = await fetch('/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
